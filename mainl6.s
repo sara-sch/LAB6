@@ -40,6 +40,7 @@ PSECT udata_shr		    ; Memoria compartida
     W_TEMP:		DS 1
     STATUS_TEMP:	DS 1
     segundos:		DS 1
+    tiempo:		DS 1
 
 PSECT resVect, class=CODE, abs, delta=2
 ORG 00h			    ; posición 0000h para el reset
@@ -59,6 +60,8 @@ PUSH:
 ISR:
     BTFSC   TMR1IF	    ; Interrupcion de TMR1
     CALL    INT_TMR1
+    BTFSC   TMR2IF	    ; Interrupcion de TMR1
+    CALL    INT_TMR2
 
 POP:
     SWAPF   STATUS_TEMP, W  
@@ -69,10 +72,22 @@ POP:
 
 ; ------ SUBRUTINAS DE INTERRUPCIONES ------
 INT_TMR1:
-    RESET_TMR1 0x0B, 0xDC   ; Reiniciamos TMR1 para 1s
+    RESET_TMR1 0x0B, 0xCD   ; Reiniciamos TMR1 para 1s
     INCF    segundos	    ; Incremento en segundos
     MOVF    segundos, W
     MOVWF   PORTA	    ; Movemos a PORTA para verificar incremento de la variable
+    RETURN
+    
+INT_TMR2:
+    BSF	    PORTB, 0
+    BCF	    TMR2IF	    ; Limpiamos bandera de interrupcion de TMR2
+    INCF    tiempo
+    MOVLW   2
+    SUBWF   tiempo, F
+    BTFSS   STATUS, 0
+    GOTO    $+3
+    BCF	    PORTB, 0 
+    GOTO    $-5
     RETURN
 
 PSECT code, delta=2, abs
@@ -82,6 +97,7 @@ MAIN:
     CALL    CONFIG_IO	    ; Configuración de I/O
     CALL    CONFIG_RELOJ    ; Configuración de Oscilador
     CALL    CONFIG_TMR1	    ; Configuración de TMR1
+    CALL    CONFIG_TMR2	    ; Configuración de TMR2
     CALL    CONFIG_INT	    ; Configuración de interrupciones
     BANKSEL PORTD	    ; Cambio a banco 00
     
@@ -93,22 +109,38 @@ LOOP:
 CONFIG_RELOJ:
     BANKSEL OSCCON	    ; cambiamos a banco 1
     BSF	    OSCCON, 0	    ; SCS -> 1, Usamos reloj interno
-    BSF	    OSCCON, 6
-    BCF	    OSCCON, 5
-    BSF	    OSCCON, 4	    ; IRCF<2:0> -> 101 2MHz
+    BCF	    OSCCON, 6
+    BSF	    OSCCON, 5
+    BSF	    OSCCON, 4	    ; IRCF<2:0> -> 011 500kHz
     RETURN
 
 CONFIG_TMR1:
     BANKSEL T1CON	    ; Cambiamos a banco 00
     BCF	    TMR1CS	    ; Reloj interno
     BCF	    T1OSCEN	    ; Apagamos LP
-    BSF	    T1CKPS1	    ; Prescaler 1:8
+    BCF	    T1CKPS1	    ; Prescaler 1:4
     BSF	    T1CKPS0
     BCF	    TMR1GE	    ; TMR1 siempre contando
     BSF	    TMR1ON	    ; Encendemos TMR1
     
-    RESET_TMR1 0x0B, 0xDC   ; TMR1 a 1s
+    RESET_TMR1 0x0B, 0xCD   ; TMR1 a 1s
     RETURN
+    
+CONFIG_TMR2:
+    BANKSEL PR2		    ; Cambiamos a banco 01
+    MOVLW   244		    ; Valor para interrupciones cada 500ms
+    MOVWF   PR2		    ; Cargamos litaral a PR2
+    
+    BANKSEL T2CON	    ; Cambiamos a banco 00
+    BSF	    T2CKPS1	    ; Prescaler 1:16
+    BSF	    T2CKPS0
+    
+    BSF	    TOUTPS3	    ;Postscaler 1:16
+    BSF	    TOUTPS2
+    BSF	    TOUTPS1
+    BCF	    TOUTPS0
+    
+    BSF	    TMR2ON	    ; Encendemos TMR2
     
  CONFIG_IO:
     BANKSEL ANSEL
@@ -116,16 +148,20 @@ CONFIG_TMR1:
     CLRF    ANSELH	    ; I/O digitales
     BANKSEL TRISA
     CLRF    TRISA	    ; PORTA como salida
+    BCF	    PORTB, 0
     BANKSEL PORTA
     CLRF    PORTA	    ; Apagamos PORTA
+    CLRF    PORTB	    ; Apagamos PORTB
     RETURN
     
 CONFIG_INT:
     BANKSEL PIE1	    ; Cambiamos a banco 01
     BSF	    TMR1IE	    ; Habilitamos int. TMR1
+    BSF	    TMR2IE	    ; Habilitamos int. TMR2
     
     BANKSEL INTCON	    ; Cambiamos a banco 00
     BSF	    PEIE	    ; Habilitamos int. perifericos
     BSF	    GIE		    ; Habilitamos interrupciones
     BCF	    TMR1IF	    ; Limpiamos bandera de TMR1
+    BCF	    TMR2IF	    ; Limpiamos bandera de TMR2
     RETURN
