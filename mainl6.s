@@ -35,6 +35,7 @@ RESET_TMR1 MACRO TMR1_H, TMR1_L
     BCF	    TMR1IF	    ; Limpiamos bandera de int. TMR1
     ENDM
     
+; Macro para reiniciar el valor del TMR0
   RESET_TMR0 MACRO TMR_VAR
     BANKSEL TMR0	    ; cambiamos de banco
     MOVLW   TMR_VAR
@@ -46,12 +47,10 @@ RESET_TMR1 MACRO TMR1_H, TMR1_L
 PSECT udata_shr		    ; Memoria compartida
     W_TEMP:		DS 1
     STATUS_TEMP:	DS 1
-    segundos:		DS 1
-    tiempo:		DS 1
-    num:		DS 1
-    cantidad:		DS 1
-    banderas:		DS 1
-    nibbles:		DS 2
+    segundos:		DS 1	; Variable para TMR1
+    tiempo:		DS 1	; Variable para TMR2
+    banderas:		DS 1	; Indica que display hay que encender
+    nibbles:		DS 2	; Contiene los nibbles alto y bajo de valor
     display:		DS 2	; Representación de cada nibble en el display de 7-seg
 
 PSECT resVect, class=CODE, abs, delta=2
@@ -74,7 +73,7 @@ ISR:
     CALL    INT_TMR1
     BTFSC   TMR2IF	    ; Interrupcion de TMR1
     CALL    INT_TMR2
-    BTFSC   T0IF	    ; Interrupcion de TMR0?
+    BTFSC   T0IF	    ; Interrupcion de TMR0
     CALL    INT_TMR0
 
 POP:
@@ -120,12 +119,8 @@ MAIN:
     BANKSEL PORTD	    ; Cambio a banco 00
     
 LOOP:
-    MOVF    num, W		; Movemos num_bianrios a W
-    MOVWF   cantidad		; Movemos W a la variable cantidad
-    MOVF    num, W		; Movemos num_bianrios a W
-    MOVF    segundos		; Movemos W a la variable valor
     CALL    OBTENER_NIBBLE	; Guardamos nibble alto y bajo de valor
-    CALL    SET_DISPLAY		; Guardamos los valores a enviar en PORTA para mostrar valor en hex
+    CALL    SET_DISPLAY		; Guardamos los valores a enviar en PORTC para mostrar valor en hex
     GOTO    LOOP	    
     
 ;------------- SUBRUTINAS ---------------
@@ -152,13 +147,13 @@ CONFIG_TMR1:
 CONFIG_TMR2:
     BANKSEL PR2		    ; Cambiamos a banco 01
     MOVLW   244		    ; Valor para interrupciones cada 500ms
-    MOVWF   PR2		    ; Cargamos litaral a PR2
+    MOVWF   PR2		    ; Cargamos literal a PR2
     
     BANKSEL T2CON	    ; Cambiamos a banco 00
     BSF	    T2CKPS1	    ; Prescaler 1:16
     BSF	    T2CKPS0
     
-    BSF	    TOUTPS3	    ;Postscaler 1:16
+    BSF	    TOUTPS3	    ; Postscaler 1:16
     BSF	    TOUTPS2
     BSF	    TOUTPS1
     BCF	    TOUTPS0
@@ -182,17 +177,16 @@ CONFIG_TMR0:
  CONFIG_IO:
     BANKSEL ANSEL
     CLRF    ANSEL
-    CLRF    ANSELH	    ; I/O digitales
-    BANKSEL TRISA
-    CLRF    TRISA	    ; PORTA como salida
-    BCF	    PORTB, 0
-    CLRF    TRISC
+    CLRF    ANSELH		; I/O digitales
+    BANKSEL TRISB
+    BCF	    PORTB, 0		; PORTB0 como salida
+    CLRF    TRISC		; PORTC como salida
     BCF	    TRISD, 0		; RD0 como salida / display nibble alto
     BCF	    TRISD, 1		; RD1 como salida / display nibble bajo
-    BANKSEL PORTA
-    CLRF    PORTA	    ; Apagamos PORTA
-    CLRF    PORTB	    ; Apagamos PORTB
-    CLRF    PORTC
+    BANKSEL PORTB
+    CLRF    PORTB		; Apagamos PORTB
+    CLRF    PORTC		; Apagamos PORTC
+    CLRF    PORTD		; Apagamos PORTD
     RETURN
     
 CONFIG_INT:
